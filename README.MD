@@ -2,6 +2,7 @@
 
 A telegram bot that simulates cryptocurrency trading without real money.
 Crypto-fiat swap solution.
+Attention was paid to detail, code is real-world ready.
 
 ## Features
 
