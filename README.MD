@@ -13,6 +13,10 @@ A telegram bot that simulates cryptocurrency trading without real money.
 
 ### Project Structure
 
+The code uses Django models to define the `Wallet` and `Transaction` models, which represent the user's wallet and transaction records, respectively. The models are related to the `User` model, which stores user information such as the Telegram user ID and username.
+
+The code also includes error handling mechanisms such as custom exceptions (`InsufficientFundsError`), input validation, and exception handling for API requests.
+
 ```
 ├── bot.py          # Main bot logic
 ├── commands/       # Bot commands
