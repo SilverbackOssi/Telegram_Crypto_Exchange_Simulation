@@ -30,7 +30,7 @@ The code also includes error handling mechanisms such as custom exceptions (`Ins
 ## Usage
 
 Start trading crypto with virtual money by interacting with the bot on Telegram.
-The bot would be available @CryptoSimBotOssi when hosted
+The bot would be available @CryptoExchangeSolutionBot when hosted
 
 ## License
 
