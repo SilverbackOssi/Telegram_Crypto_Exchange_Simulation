@@ -7,12 +7,13 @@ env/
 *.pyc
 __pycache__/
 
-# Django stuff:
+# Django stuff
 *.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
 **/migrations/*
+coingecko_cache.sqlite
 
 # Unit test / coverage reports
 htmlcov/
@@ -27,3 +28,8 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+
+# Utils
+.DS_Store
+TEMPREAD.MD
+TO-DO.txt

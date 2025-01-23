@@ -1,6 +1,5 @@
 from django.db import models
 from django.core.validators import MinValueValidator
-from wallet.models import User
 
 
 class User(models.Model):
@@ -14,20 +13,11 @@ class Wallet(models.Model):
     balance = models.JSONField(default=dict)
 
 
-'''class Transaction(models.Model):
-    wallet = models.ForeignKey(Wallet, on_delete=models.CASCADE)
-    amount = models.FloatField()
-    currency = models.CharField(max_length=10)
-    type = models.CharField(max_length=10)  # Can be "deposit" or "withdraw"
-    created_at = models.DateTimeField(auto_now_add=True)
-'''
-
-
 class Transaction(models.Model):
     # Constants
     TRANSACTION_TYPES = [
         ('buy', 'Buy'),
-        ('sell', 'Sell')
+        ('sell', 'Sell'),
         ('swap', 'Swap')
     ]
     TRANSACTION_STATUS = [
@@ -37,14 +27,16 @@ class Transaction(models.Model):
         ('cancelled', 'Cancelled')
     ]
 
-    # Fields
+    # Fields (14 Columns, 2 Auto Fields)
     user = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name='transactions')
-    wallet = models.ForeignKey(Wallet, on_delete=models.CASCADE)
-    # currency = models.ForeignKey(Currency, on_delete=models.CASCADE, related_name='trades')
-    # use currency codes like 'btc', 'eth', 'usd'
-    base_currency = models.CharField(max_length=10, db_index=True)
-    destination_currency = models.CharField(max_length=10, db_index=True)
+    wallet = models.ForeignKey(
+        Wallet, on_delete=models.CASCADE, related_name='transactions')
+    # currency = models.ForeignKey(Coin, on_delete=models.CASCADE, related_name='trades')
+    # XXX: Use currency object foreign instead of currency symbol, create currency model
+    # use currency symbol like 'btc', 'eth', 'usd'
+    base_currency = models.CharField(max_length=50, db_index=True)
+    destination_currency = models.CharField(max_length=50, db_index=True)
     base_amount = models.DecimalField(
         max_digits=20,
         decimal_places=8,
@@ -91,18 +83,20 @@ class Transaction(models.Model):
     # Indexes and ordering
     class Meta:
         indexes = [
-            models.Index(fields=['user', 'timestamp']),  # Common query pattern
+            models.Index(fields=['user', 'timestamp']),
             models.Index(fields=['user', 'status']),
             models.Index(fields=['base_currency', 'destination_currency'])
         ]
-        ordering = ['-timestamp']  # Newest first by default
+        ordering = ['-timestamp']
+        get_latest_by = 'timestamp'
 
+    '''
     # Methods
     def save(self, *args, **kwargs):
         # Calculate total value before saving
         if self.base_amount and self.rate:
             self.destination_amount = self.base_amount * self.rate
-        super().save(*args, **kwargs)
+        super().save(*args, **kwargs)'''
 
     def __str__(self):
         return f"{self.transaction_type.upper()} {self.base_amount} {self.base_currency} @ {self.rate} {self.destination_currency}"
