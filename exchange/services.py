@@ -2,10 +2,9 @@ from typing import Dict, Union
 from decimal import Decimal
 from dataclasses import dataclass
 from django.shortcuts import get_object_or_404
-from django.core.exceptions import ValidationError
 from django.db import transaction
 from wallet.models import Transaction, User
-from wallet.utils import get_user_wallet, update_wallet
+from wallet.utils import get_user_wallet
 from models import Coin
 from utils import get_coin_price
 
@@ -183,115 +182,176 @@ def simulate_and_execute_swap(user_id: str, origin_currency_code: str, destinati
 # XXX: This is still raw and needs to be adapted to our project
 # It assumes base currency is the currency being offered and quote currency is the currency being requested
 
+# a trading transaction is a swap transaction where one fiat currency is exchanged for cryptocurrency
+# we only support usd as the base currency for now
+
 
 def simulate_and_execute_buy_sell(
         user_id: str,
-        offer_currency_code: str,
-        request_currency_code: str,
+        cryptocurrency_code: str,
         amount: Union[Decimal, float, str],
-        price: Union[Decimal, float, str],
         transaction_type: str) -> TransactionResult:
     """
     Simulates and executes a trading transaction, providing detailed status reporting.
 
     Args:
         user_id: Telegram user ID
-        base_currency_code: Primary currency, what is being offered
-        quote_currency_code: Secondary currency, what is being requested
-        amount: Amount to trade
-        price: Price per unit
-        transaction_type: 'buy' or 'sell'
+        cryptocurrency_code: Cryptocurrency to trade
+        amount: Amount of offer_currency_code to trade
+        transaction_type: Type of transaction ('buy' or 'sell')
 
     Returns:
         TransactionResult object containing execution status and details
     """
     try:
-        transaction_type = transaction_type.lower()
+        # Input validation
+        if not all([user_id, cryptocurrency_code, amount, transaction_type]):
+            return TransactionResult(
+                success=False,
+                transaction_record=None,
+                status='invalid_input',
+                message='All parameters are required',
+                error_type='ValidationError'
+            )
+        if not isinstance(amount, (Decimal, float, int)):
+            return TransactionResult(
+                success=False,
+                transaction_record=None,
+                status='invalid_input',
+                message='Amount must be a number',
+                error_type='ValidationError'
+            )
         amount = Decimal(str(amount))
-        price = get_currency_price(base_currency).get(f"{base_currency}/USD")
-        # paste all swap validations
-        # price = Decimal(str(price))
-        total_value = amount * price
+        if amount <= 0:
+            return TransactionResult(
+                success=False,
+                transaction_record=None,
+                status='invalid_input',
+                message='Amount must be positive',
+                error_type='ValidationError'
+            )
+        transaction_type = transaction_type.lower()
+        if transaction_type not in ['buy', 'sell']:
+            return TransactionResult(
+                success=False,
+                transaction_record=None,
+                status='invalid_input',
+                message="Transaction type must be 'buy' or 'sell'",
+                error_type='ValidationError'
+            )
+        if cryptocurrency_code not in Coin.objects.filter(is_active=True).values_list('symbol', flat=True):
+            return TransactionResult(
+                success=False,
+                transaction_record=None,
+                status='unsupported_currency',
+                message="Currency not supported",
+                error_type='ValidationError'
+            )
 
-        # Get user and wallet
+        price = get_coin_price(cryptocurrency_code)
+        if not price:
+            return TransactionResult(
+                success=False,
+                transaction_record=None,
+                status='price_unavailable',
+                message="Price data unavailable for the currency",
+                error_type='ValidationError'
+            )
+        usd_value = amount * price
+
         user = get_object_or_404(User, user_id=user_id)
         wallet = get_user_wallet(user_id)
 
         # Get current balances
-        current_base = Decimal(str(wallet.balance.get(base_currency, '0')))
-        current_quote = Decimal(str(wallet.balance.get(quote_currency, '0')))
+        current_usd_balance = Decimal(str(wallet.balance.get('usd', '0')))
+        current_crypto_balance = Decimal(
+            str(wallet.balance.get(cryptocurrency_code, '0')))
 
         # Simulate the transaction
-        if transaction_type == 'buy':
-            if current_quote < total_value:
+        with transaction.atomic():
+            if transaction_type == 'buy':
+                if current_usd_balance < usd_value:
+                    return TransactionResult(
+                        success=False,
+                        transaction_record=None,
+                        status='insufficient_funds',
+                        message=f"Insufficient USD balance. Need: {usd_value}, Have: {current_usd_balance}",
+                        final_balances={
+                            'usd': current_usd_balance,
+                            cryptocurrency_code: current_crypto_balance
+                        },
+                        error_type='InsufficientFundsError'
+                    )
+                new_usd_balance = current_usd_balance - usd_value
+                new_crypto_balance = current_crypto_balance + amount
+
+                # Record the buy transaction
+                transaction_record = Transaction.objects.create(
+                    user=user,
+                    wallet=wallet,
+                    base_currency='usd',
+                    base_amount=usd_value,
+                    destination_currency=cryptocurrency_code,
+                    destination_amount=amount,
+                    rate=price,
+                    transaction_type='buy',
+                    status='completed',
+                    transaction_details=f"Bought {amount} {cryptocurrency_code} at {price} USD"
+                )
+            elif transaction_type == 'sell':
+                if current_crypto_balance < amount:
+                    return TransactionResult(
+                        success=False,
+                        transaction_record=None,
+                        status='insufficient_funds',
+                        message=f"Insufficient {cryptocurrency_code} balance. Need: {amount}, Have: {current_crypto_balance}",
+                        final_balances={
+                            'usd': current_usd_balance,
+                            cryptocurrency_code: current_crypto_balance
+                        },
+                        error_type='InsufficientFundsError'
+                    )
+                new_usd_balance = current_usd_balance + usd_value
+                new_crypto_balance = current_crypto_balance - amount
+
+                # Record the sell transaction
+                transaction_record = Transaction.objects.create(
+                    user=user,
+                    wallet=wallet,
+                    base_currency=cryptocurrency_code,
+                    base_amount=amount,
+                    destination_currency='usd',
+                    destination_amount=usd_value,
+                    rate=price,
+                    transaction_type='sell',
+                    status='completed',
+                    transaction_details=f"Sold {amount} {cryptocurrency_code} at {price} USD"
+                )
+            else:
                 return TransactionResult(
                     success=False,
                     transaction_record=None,
-                    status='insufficient_funds',
-                    message=f"Insufficient {quote_currency} balance. Need: {total_value}, Have: {current_quote}",
-                    predicted_balances={
-                        base_currency: current_base,
-                        quote_currency: current_quote
-                    },
-                    error_type='InsufficientFundsError'
+                    status='invalid_transaction_type',
+                    message="Transaction type must be 'buy' or 'sell'",
+                    error_type='ValidationError'
                 )
-            predicted_base = current_base + amount
-            predicted_quote = current_quote - total_value
 
-        elif transaction_type == 'sell':
-            if current_base < amount:
-                return TransactionResult(
-                    success=False,
-                    transaction_record=None,
-                    status='insufficient_funds',
-                    message=f"Insufficient {base_currency} balance. Need: {amount}, Have: {current_base}",
-                    predicted_balances={
-                        base_currency: current_base,
-                        quote_currency: current_quote
-                    },
-                    error_type='InsufficientFundsError'
-                )
-            predicted_base = current_base - amount
-            predicted_quote = current_quote + total_value
+            # update the wallet balances
+            wallet.balance['usd'] = new_usd_balance
+            wallet.balance[cryptocurrency_code] = new_crypto_balance
+            wallet.save()
 
-        else:
+            # Return the transaction result
             return TransactionResult(
-                success=False,
-                transaction_record=None,
-                status='invalid_transaction_type',
-                message="Transaction type must be 'buy' or 'sell'",
-                error_type='ValidationError'
+                success=True,
+                transaction_record=transaction_record,
+                status='completed',
+                message=f"Successfully {transaction_type} {amount} {cryptocurrency_code} at {price} USD",
+                final_balances={
+                    'usd': new_usd_balance,
+                    cryptocurrency_code: new_crypto_balance
+                }
             )
-
-        # If simulation successful, execute the actual transaction
-        transaction_record = update_wallet(
-            user=user,
-            base_currency=base_currency,
-            quote_currency=quote_currency,
-            amount=amount,
-            price=price,
-            transaction_type=transaction_type
-        )
-
-        return TransactionResult(
-            success=True,
-            transaction_record=transaction_record,
-            status='completed',
-            message=f"Successfully {transaction_type} {amount} {base_currency} at {price} {quote_currency}",
-            predicted_balances={
-                base_currency: predicted_base,
-                quote_currency: predicted_quote
-            }
-        )
-    except ValidationError as e:
-        print(f"Validation Error: {str(e)}")
-        return TransactionResult(
-            success=False,
-            transaction_record=None,
-            status='validation_error',
-            message=str(e),
-            error_type='ValidationError'
-        )
     except Exception as e:
         # Log unexpected error here
         print(f"Unexpected Error: {str(e)}")

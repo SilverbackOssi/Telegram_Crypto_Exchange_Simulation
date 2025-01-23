@@ -53,7 +53,7 @@ class Transaction(models.Model):
         max_digits=20,
         decimal_places=8,
         validators=[MinValueValidator(0.0)],
-        help_text="(Exchange rate)Price of 1 unit of base currency in quote currency"
+        help_text="Exchange rate in USD (Price of 1 unit of origin currency in destination currency for swaps)"
     )
     transaction_type = models.CharField(
         max_length=4, choices=TRANSACTION_TYPES, db_index=True)
