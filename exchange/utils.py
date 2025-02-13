@@ -2,7 +2,7 @@ import requests
 from django.core.exceptions import ValidationError
 from decimal import Decimal
 from typing import Union, Optional
-from models import Coin, Vs_currencies
+from .models import Coin, Vs_currencies
 from django.shortcuts import get_object_or_404
 
 from templates.URLS import Coingecko
@@ -16,7 +16,8 @@ class UnexpectedError(Exception):
     pass
 
 
-def get_coin_price(currency_code: str, vs_currency: str = 'usd') -> Optional[Decimal]:
+# XXX: must use currency id(unique)
+def get_coin_price(currency_id: str, vs_currency: str = 'usd') -> Optional[Decimal]:
     '''
     Fetches the current price of a cryptocurrency in USD(or otherwise stated) from the CoinGecko API.
     Returns The price of the coin in USD, or None
@@ -25,15 +26,14 @@ def get_coin_price(currency_code: str, vs_currency: str = 'usd') -> Optional[Dec
         url = Coingecko.COIN_PRICE
 
         # Validate currency codes
-        currency_code = currency_code.lower()
+        currency_id = currency_id.lower()
         vs_currency = vs_currency.lower()
         try:
-            coin = Coin.objects.get_object_or_404(Coin, symbol=currency_code)
-            quote = Vs_currencies.objects.get_object_or_404(
-                Vs_currencies, currency=vs_currency)
+            coin = get_object_or_404(Coin, id=currency_id)
+            quote = get_object_or_404(Vs_currencies, currency=vs_currency)
         except:
             raise ValueError(
-                f"Unsupported currency(ies): {currency_code}/{vs_currency}")
+                f"Unsupported currency(ies): {currency_id}/{vs_currency}")
 
         # Fetch price data
         try:
@@ -47,7 +47,10 @@ def get_coin_price(currency_code: str, vs_currency: str = 'usd') -> Optional[Dec
             data = response.json()
             price = Decimal(data[coin_id][quote_currency])
 
+            coin.price_usd = price
+            coin.save()
             return price
+
         except requests.exceptions.HTTPError as http_err:
             print(f"HTTP error occurred: {http_err}")
         except requests.exceptions.ConnectionError as conn_err:
@@ -56,13 +59,15 @@ def get_coin_price(currency_code: str, vs_currency: str = 'usd') -> Optional[Dec
             print(f"Timeout error occurred: {timeout_err}")
         except requests.exceptions.RequestException as req_err:
             print(f"An error occurred: {req_err}")
+        if coin.price_usd:
+            return coin.price_usd
     except Exception as e:
         print(f"Unexpected error: {e}")
         return None
 
 
 def get_swap_destination_amount(
-        origin_currency_code: str, destination_currency_code: str,
+        origin_currency_id: str, destination_currency_id: str,
         origin_amount: Union[int, float, str, Decimal]
 ) -> Union[Decimal, float, None]:
     '''
@@ -71,22 +76,20 @@ def get_swap_destination_amount(
     '''
     try:
         origin_amount = Decimal(str(origin_amount))
-        origin_currency_code = origin_currency_code.lower()
-        destination_currency_code = destination_currency_code.lower()
+        origin_currency_id = origin_currency_id.lower()
+        destination_currency_id = destination_currency_id.lower()
 
         # Validate currency codes
         try:
-            coin = Coin.objects.get_object_or_404(
-                Coin, symbol=origin_currency_code)
-            quote = Coin.objects.get_object_or_404(
-                Coin, symbol=destination_currency_code)
+            coin = get_object_or_404(Coin, id=origin_currency_id)
+            quote = get_object_or_404(Coin, id=destination_currency_id)
         except:
             raise ValueError(
-                f"Either currencies are unsupported: {origin_currency_code}, {destination_currency_code}")
+                f"Either currencies are unsupported: {origin_currency_id}, {destination_currency_id}")
 
         # Get price rates
-        origin_usd_price = get_coin_price(origin_currency_code)
-        destination_usd_price = get_coin_price(destination_currency_code)
+        origin_usd_price = get_coin_price(origin_currency_id)
+        destination_usd_price = get_coin_price(destination_currency_id)
 
         # Validate price data
         if not (origin_usd_price and destination_usd_price):

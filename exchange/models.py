@@ -1,5 +1,6 @@
 from django.db import models
 from django.core.validators import MinValueValidator
+from datetime import datetime
 
 
 class Coin(models.Model):
@@ -10,12 +11,13 @@ class Coin(models.Model):
     price_usd = models.DecimalField(
         max_digits=20,
         decimal_places=8,
-        default=0.0,
-        blank=True,
+        null=True,
         validators=[MinValueValidator(0.0)],
         help_text="Current price in USD"
     )
-    last_updated = models.DateTimeField(auto_now=True, db_index=True)
+    date_added = models.DateTimeField(
+        auto_now_add=True, db_index=True)
+    last_updated = models.DateTimeField(auto_now=True)
     last_updated.short_description = "Last Updated"
     is_active = models.BooleanField(default=True, db_index=True)
 

@@ -3,50 +3,66 @@ import requests
 import requests_cache
 from templates.URLS import Coingecko
 from decimal import Decimal
+from wallet.models import User
+from wallet.utils import get_user_wallet, get_user_transactions
+from .models import Coin, Vs_currencies
+from .utils import get_swap_destination_amount
+from .services import simulate_and_execute_buy_sell, simulate_and_execute_swap, get_object_or_404, deposit_usd
+from django.db.models import Count
 
 requests_cache.install_cache('coingecko_cache', expire_after=3600)
-# url = "<https://api.coingecko.com/api/v3/coins/list>"
+
+rand_id = '123456'
+test_user, _ = User.objects.get_or_create(
+    user_id=rand_id, username='test_user')
+if _:
+    print('New user created')
+else:
+    print('User Found')
+test_user_wallet = get_user_wallet(test_user.user_id)
+# test creating same user raise unique key constraint error
+if test_user_wallet:
+    print(f"user {test_user.username}: {test_user.user_id}, wallet found")
+
+# test fetch coins and vs
+currency_code = "eth"
+cryptocurrency_id = "ethereum"
+vs_currency = "usd"
 
 
-def fetch_supported_VScurrencies():
-    url = "https://api.coingecko.com/api/v3/simple/supported_vs_currencies"
-    response = requests.get(url)
-    if response.status_code == 200:
-        data = response.json()
+# test deposit = PASS
+# deposit_result = deposit_usd(test_user.user_id, 500000)
+# print(
+#     f"\ntransaction status: {deposit_result.status},{deposit_result.message}")
+#  test buy = PASS
+# buy_result = simulate_and_execute_buy_sell(
+#     test_user.user_id, "ethereum", 16, "buy")
+# print(f"\ntransaction status: {buy_result.status},{buy_result.message}")
+# # test sell = PASS
+# sell_result = simulate_and_execute_buy_sell(
+#     test_user.user_id, "ethereum", 49, "sell")
+# print(f"\ntransaction status: {sell_result.status},{sell_result.message}")
 
-        return data
-    return None
+# test swap
+# swap_result = simulate_and_execute_swap(
+#     test_user.user_id, cryptocurrency_id, "bitcoin", 300)
+# print(f"\ntransaction status: {swap_result.status},{swap_result.message}")
+# print(f"new balance: {test_user_wallet.balance}")
 
+# get user transactions - PASS
+# test_user_transactions = get_user_transactions(
+#     test_user.user_id, currency="usd")
+# for transaction in test_user_transactions:
+#     rate = transaction.rate
+#     print(rate)
+# print(test_user_transactions)
 
-def fetch_supported_cryptocurrencies():
-    url = "https://api.coingecko.com/api/v3/coins/list"
-    response = requests.get(url)
-    if response.status_code == 200:
-        data = response.json()
-        return data
-    return None
-
-
-def fetch_exchange_rate(base_currency, quote_currency):
-    url = f"https://api.coingecko.com/api/v3/simple/price?ids={base_currency}&vs_currencies={quote_currency},eur"
-    response = requests.get(url)
-    if response.status_code == 200:
-        data = response.json()
-        return data
-        # return data.get(base_currency, {}).get(quote_currency, None)
-    return None
-
-
-'''
-# Check if currency code is supported XXX: This should be cross-checked with the list of supported currencies in the database
-def confirm_currency_code(currency_code):
-    url = f"https://api.coingecko.com/api/v3/simple/supported_vs_currencies"
-    response = requests.get(url)
-    if response.status_code == 200:
-        data = response.json()
-        return currency_code in data
-    return False'''
-
+# get swap destination
+amoount = 1
+destination_amount = get_swap_destination_amount(
+    'bitcoin', 'ethereum', amoount)
+print(f'swap {amoount} bitcoin for [{destination_amount}] ethereum')
+# =====================================
 # print(fetch_supported_VScurrencies())
 # coins = fetch_supported_cryptocurrencies()
 # vs_currencies = fetch_supported_VScurrencies()
@@ -70,24 +86,24 @@ print(ethereum)'''
 # print(coin_price)
 # print("fetch currency, fetch price, sort categories".upper())
 #
-coins_response = requests.get(f"{Coingecko.API_BASE}/coins/list")
-coins = coins_response.json()
-print(len(coins))
-# Fetch the prices of all coins in one request
-coin_ids = ','.join([coin['id'] for coin in coins])
-# print(coin_ids)
-# coin_prices_response = requests.get(
-#     f"{Coingecko.API_BASE}/simple/price",
-#     params={'ids': coin_ids, 'vs_currencies': 'usd'}
-# )
-# coin_prices_response.raise_for_status()
-# coin_prices = coin_prices_response.json()
-# print(coin_prices)
-coin_id = "bitcoin"
-quote_currency = "usd"
-params = {'ids': f"{coin_id}", 'vs_currencies': f"{quote_currency}"}
-response = requests.get(Coingecko.COIN_PRICE, params=params)
-response.raise_for_status()  # Raise an exception for HTTP errors
-data = response.json()
-price = Decimal(data[coin_id][quote_currency])
-print(price)
+# coins_response = requests.get(f"{Coingecko.API_BASE}/coins/list")
+# coins = coins_response.json()
+# print(len(coins))
+# # Fetch the prices of all coins in one request
+# coin_ids = ','.join([coin['id'] for coin in coins])
+# # print(coin_ids)
+# # coin_prices_response = requests.get(
+# #     f"{Coingecko.API_BASE}/simple/price",
+# #     params={'ids': coin_ids, 'vs_currencies': 'usd'}
+# # )
+# # coin_prices_response.raise_for_status()
+# # coin_prices = coin_prices_response.json()
+# # print(coin_prices)
+# coin_id = "bitcoin"
+# quote_currency = "usd"
+# params = {'ids': f"{coin_id}", 'vs_currencies': f"{quote_currency}"}
+# response = requests.get(Coingecko.COIN_PRICE, params=params)
+# response.raise_for_status()  # Raise an exception for HTTP errors
+# data = response.json()
+# price = Decimal(data[coin_id][quote_currency])
+# print(price)

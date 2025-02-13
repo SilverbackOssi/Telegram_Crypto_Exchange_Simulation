@@ -9,7 +9,7 @@ class InsufficientFundsError(Exception):
     pass
 
 
-def get_user_wallet(telegram_user_id) -> Wallet:
+def get_user_wallet(telegram_user_id: str) -> Wallet:
     """
     Gets or creates a wallet for a given Telegram user ID.
     First ensures user exists, then gets or creates their wallet.
@@ -24,14 +24,17 @@ def get_user_wallet(telegram_user_id) -> Wallet:
         Http404: If user doesn't exist
     """
     # (404 if not found)
-    user = get_object_or_404(User, user_id=telegram_user_id)
+    try:
+        user = get_object_or_404(User, user_id=telegram_user_id)
 
-    # Get or create their wallet (a fallback if create wallet signal failed)
-    wallet, created = Wallet.objects.get_or_create(
-        user=user,
-        defaults={'balance': {}}  # set empty balance if created
-    )
-    return wallet
+        # Get or create their wallet (a fallback if create wallet signal failed)
+        wallet, created = Wallet.objects.get_or_create(
+            user=user,
+            defaults={'balance': {}}  # set empty balance if created
+        )
+        return wallet
+    except:
+        return None
 
 
 def get_user_transactions(telegram_user_id: str,
@@ -69,7 +72,7 @@ def get_user_transactions(telegram_user_id: str,
         # Look for currency in both base_currency and to_currency (for swaps)
         transactions = transactions.filter(
             models.Q(base_currency=currency) |
-            models.Q(to_currency=currency)
+            models.Q(destination_currency=currency)
         )
 
     # Apply pagination if provided
